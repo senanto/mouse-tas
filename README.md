@@ -12,6 +12,7 @@ pip install pynput & python mouse-tas.py
 - S – Play/stop the recorded macro
 - P – Pause/resume during playback
 - A – Start/stop append mode (adds new actions to the end of existing recording)
+- Z – undo last event
 
 ## Configuration
 

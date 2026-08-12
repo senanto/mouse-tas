@@ -23,6 +23,8 @@ base_events = []
 new_events = []
 append_start_time = 0
 base_last_time = 0
+backup_base = [] 
+append_history = []  
 
 mouse_controller = Controller()
 
@@ -38,7 +40,7 @@ def beep():
 
 def on_press(key):
     global recording, events, start_time, mode, play_thread, play_events, play_start_time, play_index, pause_flag
-    global append_mode, base_events, new_events, append_start_time, base_last_time
+    global append_mode, base_events, new_events, append_start_time, base_last_time, backup_base, append_history
     try:
         if key == keyboard.KeyCode.from_char('q'):
             print("[TAS] - Shutting down...")
@@ -126,6 +128,7 @@ def on_press(key):
                     new_events = []
                     append_start_time = time.time()
                     base_last_time = base_events[-1]['time'] if base_events else 0
+                    backup_base = base_events.copy() 
                     append_mode = True
                     mode = "append"
                     print(f"[TAS] - Append mode started. Existing events: {len(base_events)}")
@@ -137,6 +140,10 @@ def on_press(key):
                         offset = base_last_time + 0.05
                         for e in new_events:
                             e['time'] = e['time'] - append_start_time + offset
+                        append_history.append({
+                            'before': backup_base,
+                            'added': new_events.copy()
+                        })
                         base_events.extend(new_events)
                         with open('mouse_tas.json', 'w') as f:
                             json.dump(base_events, f, indent=2)
@@ -164,8 +171,17 @@ def on_press(key):
                     print("[TAS] - No appended events to remove.")
                     beep()
             else:
-                print("[TAS] - Not recording or appending.")
-                beep()
+                if append_history:
+                    last = append_history.pop()
+                    base_events = last['before']
+                    with open('mouse_tas.json', 'w') as f:
+                        json.dump(base_events, f, indent=2)
+                    print(f"[TAS] - Undo last append. Total events: {len(base_events)}")
+                    beep()
+                    beep()
+                else:
+                    print("[TAS] - No append to undo.")
+                    beep()
     except AttributeError:
         pass
 
@@ -256,7 +272,7 @@ def on_scroll(x, y, dx, dy):
 
 print("[TAS] - Mouse TAS Recorder/Player")
 print("[TAS] - R: record start/stop, S: play/stop, P: pause/resume")
-print("[TAS] - A: append mode start/stop, Z: undo last event, Q: shutdown")
+print("[TAS] - A: append mode start/stop, Z: undo last event/append, Q: shutdown")
 print(f"[TAS] - Playback speed: {SPEED}x")
 
 keyboard_listener = keyboard.Listener(on_press=on_press)

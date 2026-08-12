@@ -150,7 +150,7 @@ def on_press(key):
             if recording:
                 if events:
                     removed = events.pop()
-                    print(f"[TAS] - Removed last event: {removed['type']}")
+                    print(f"[TAS] - Removed last event: {removed['type']} at ({removed.get('x', '?')}, {removed.get('y', '?')})")
                     beep()
                 else:
                     print("[TAS] - No events to remove.")
@@ -158,7 +158,7 @@ def on_press(key):
             elif append_mode:
                 if new_events:
                     removed = new_events.pop()
-                    print(f"[TAS] - Removed last appended event: {removed['type']}")
+                    print(f"[TAS] - Removed last appended event: {removed['type']} at ({removed.get('x', '?')}, {removed.get('y', '?')})")
                     beep()
                 else:
                     print("[TAS] - No appended events to remove.")

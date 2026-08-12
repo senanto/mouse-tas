@@ -3,12 +3,14 @@ from pynput.mouse import Button, Controller
 import json
 import time
 import threading
+import sys
 
 SPEED = 10.0
 
 events = []
 recording = False
 start_time = 0
+append_mode = False
 
 mode = "idle"
 play_thread = None
@@ -20,21 +22,15 @@ pause_flag = False
 mouse_controller = Controller()
 
 def on_press(key):
-    global recording, events, start_time, mode, play_thread, play_events, play_start_time, play_index, pause_flag
+    global recording, events, start_time, mode, play_thread, play_events, play_start_time, play_index, pause_flag, append_mode
     try:
-        if key == keyboard.KeyCode.from_char('q'):
-            print("[TAS] - Shutting down...")
-            if play_thread and play_thread.is_alive():
-                mode = "idle"
-                pause_flag = False
-                play_thread.join(0.1)
-            return False
-        elif key == keyboard.KeyCode.from_char('r'):
+        if key == keyboard.KeyCode.from_char('r'):
             if mode == "idle" or mode == "recording":
                 if not recording:
                     print("[TAS] - Recording started...")
                     mode = "recording"
                     recording = True
+                    append_mode = False
                     events = []
                     start_time = time.time()
                 else:
@@ -45,6 +41,31 @@ def on_press(key):
                     with open('mouse_tas.json', 'w') as f:
                         json.dump(events, f, indent=2)
                     print(f"[TAS] - Recording stopped. Saved {len(events)} events to mouse_tas.json")
+        elif key == keyboard.KeyCode.from_char('a'):
+            if mode == "idle" or mode == "recording":
+                if not recording:
+                    print("[TAS] - Append recording started...")
+                    mode = "recording"
+                    recording = True
+                    append_mode = True
+                    events = []
+                    start_time = time.time()
+                else:
+                    recording = False
+                    mode = "idle"
+                    for e in events:
+                        e['time'] -= start_time
+                    try:
+                        with open('mouse_tas.json', 'r') as f:
+                            existing = json.load(f)
+                        if not isinstance(existing, list):
+                            existing = []
+                    except (FileNotFoundError, json.JSONDecodeError):
+                        existing = []
+                    combined = existing + events
+                    with open('mouse_tas.json', 'w') as f:
+                        json.dump(combined, f, indent=2)
+                    print(f"[TAS] - Append recording stopped. Added {len(events)} events to mouse_tas.json (total {len(combined)})")
         elif key == keyboard.KeyCode.from_char('s'):
             if mode == "idle" or mode == "playing" or mode == "paused":
                 if mode == "playing" or mode == "paused":
@@ -80,6 +101,35 @@ def on_press(key):
                 pause_flag = False
                 mode = "playing"
                 print("[TAS] - Resumed.")
+        elif key == keyboard.KeyCode.from_char('q'):
+            print("[TAS] - Shutting down...")
+            if mode == "playing" or mode == "paused":
+                mode = "idle"
+                pause_flag = False
+                if play_thread and play_thread.is_alive():
+                    play_thread.join(0.1)
+            if mode == "recording":
+                recording = False
+                mode = "idle"
+                for e in events:
+                    e['time'] -= start_time
+                if append_mode:
+                    try:
+                        with open('mouse_tas.json', 'r') as f:
+                            existing = json.load(f)
+                        if not isinstance(existing, list):
+                            existing = []
+                    except (FileNotFoundError, json.JSONDecodeError):
+                        existing = []
+                    combined = existing + events
+                    with open('mouse_tas.json', 'w') as f:
+                        json.dump(combined, f, indent=2)
+                    print(f"[TAS] - Append recording saved on shutdown. Added {len(events)} events")
+                else:
+                    with open('mouse_tas.json', 'w') as f:
+                        json.dump(events, f, indent=2)
+                    print(f"[TAS] - Recording saved on shutdown. Saved {len(events)} events")
+            sys.exit(0)
     except AttributeError:
         pass
 
@@ -127,7 +177,7 @@ def on_scroll(x, y, dx, dy):
         events.append({'type':'scroll','x':x,'y':y,'dx':dx,'dy':dy,'time':time.time()})
 
 print("[TAS] - Mouse TAS Recorder/Player")
-print("[TAS] - R: record start/stop, S: play/stop, P: pause/resume, Q: quit")
+print("[TAS] - R: record start/stop (overwrite), A: append record start/stop, S: play/stop, P: pause/resume, Q: shutdown")
 print(f"[TAS] - Playback speed: {SPEED}x")
 
 keyboard_listener = keyboard.Listener(on_press=on_press)

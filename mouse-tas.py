@@ -27,12 +27,14 @@ base_last_time = 0
 mouse_controller = Controller()
 
 def beep():
-    try:
-        import winsound
-        winsound.Beep(1000, 300)
-    except:
-        sys.stdout.write('\a')
-        sys.stdout.flush()
+    def _beep():
+        try:
+            import winsound
+            winsound.Beep(1000, 300)
+        except:
+            sys.stdout.write('\a')
+            sys.stdout.flush()
+    threading.Thread(target=_beep, daemon=True).start()
 
 def on_press(key):
     global recording, events, start_time, mode, play_thread, play_events, play_start_time, play_index, pause_flag
@@ -50,11 +52,11 @@ def on_press(key):
             if mode == "idle" or mode == "recording":
                 if not recording:
                     print("[TAS] - Recording started...")
-                    beep()
                     mode = "recording"
                     recording = True
                     events = []
                     start_time = time.time()
+                    beep()
                 else:
                     recording = False
                     mode = "idle"
@@ -131,12 +133,16 @@ def on_press(key):
                 else:
                     append_mode = False
                     mode = "idle"
-                    for e in new_events:
-                        e['time'] = e['time'] - append_start_time + base_last_time
-                    base_events.extend(new_events)
-                    with open('mouse_tas.json', 'w') as f:
-                        json.dump(base_events, f, indent=2)
-                    print(f"[TAS] - Append finished. Total events: {len(base_events)}")
+                    if new_events:
+                        offset = base_last_time + 0.05
+                        for e in new_events:
+                            e['time'] = e['time'] - append_start_time + offset
+                        base_events.extend(new_events)
+                        with open('mouse_tas.json', 'w') as f:
+                            json.dump(base_events, f, indent=2)
+                        print(f"[TAS] - Append finished. Total events: {len(base_events)}")
+                    else:
+                        print("[TAS] - No new events to append.")
                     beep()
                     beep()
 
@@ -176,6 +182,10 @@ def interpolate_movement(from_x, from_y, to_x, to_y, steps):
 
 def play_loop():
     global mode, play_index, play_start_time, pause_flag
+    if play_events:
+        first_event = play_events[0]
+        if first_event['type'] == 'move' or first_event['type'] == 'click':
+            mouse_controller.position = (first_event['x'], first_event['y'])
     last_x, last_y = mouse_controller.position
     while mode == "playing" or mode == "paused":
         if mode == "paused":
@@ -210,6 +220,9 @@ def play_loop():
             else:
                 mouse_controller.position = (target_x, target_y)
         elif event['type'] == 'click':
+            if (last_x, last_y) != (event['x'], event['y']):
+                mouse_controller.position = (event['x'], event['y'])
+                last_x, last_y = event['x'], event['y']
             button = getattr(Button, event['button'])
             if event['pressed']:
                 mouse_controller.press(button)

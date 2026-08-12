@@ -4,7 +4,6 @@ import json
 import time
 import threading
 import sys
-import math
 
 SPEED = 10.0
 
@@ -20,8 +19,10 @@ play_index = 0
 pause_flag = False
 
 append_mode = False
-append_events = []
+base_events = []
+new_events = []
 append_start_time = 0
+base_last_time = 0
 
 mouse_controller = Controller()
 
@@ -35,7 +36,7 @@ def beep():
 
 def on_press(key):
     global recording, events, start_time, mode, play_thread, play_events, play_start_time, play_index, pause_flag
-    global append_mode, append_events, append_start_time
+    global append_mode, base_events, new_events, append_start_time, base_last_time
     try:
         if key == keyboard.KeyCode.from_char('q'):
             print("[TAS] - Shutting down...")
@@ -117,29 +118,30 @@ def on_press(key):
                 if not append_mode:
                     try:
                         with open('mouse_tas.json', 'r') as f:
-                            existing = json.load(f)
+                            base_events = json.load(f)
                     except FileNotFoundError:
-                        existing = []
-                    append_events = existing
+                        base_events = []
+                    new_events = []
                     append_start_time = time.time()
+                    base_last_time = base_events[-1]['time'] if base_events else 0
                     append_mode = True
                     mode = "append"
-                    print(f"[TAS] - Append mode started. Existing events: {len(append_events)}")
+                    print(f"[TAS] - Append mode started. Existing events: {len(base_events)}")
                     beep()
                 else:
                     append_mode = False
                     mode = "idle"
-                    for e in events:
-                        e['time'] = e['time'] - append_start_time + 0.1
-                    append_events.extend(events)
+                    for e in new_events:
+                        e['time'] = e['time'] - append_start_time + base_last_time
+                    base_events.extend(new_events)
                     with open('mouse_tas.json', 'w') as f:
-                        json.dump(append_events, f, indent=2)
-                    print(f"[TAS] - Append finished. Total events: {len(append_events)}")
+                        json.dump(base_events, f, indent=2)
+                    print(f"[TAS] - Append finished. Total events: {len(base_events)}")
                     beep()
                     beep()
 
         elif key == keyboard.KeyCode.from_char('z'):
-            if recording or append_mode:
+            if recording:
                 if events:
                     removed = events.pop()
                     print(f"[TAS] - Removed last event: {removed['type']}")
@@ -147,6 +149,17 @@ def on_press(key):
                 else:
                     print("[TAS] - No events to remove.")
                     beep()
+            elif append_mode:
+                if new_events:
+                    removed = new_events.pop()
+                    print(f"[TAS] - Removed last appended event: {removed['type']}")
+                    beep()
+                else:
+                    print("[TAS] - No appended events to remove.")
+                    beep()
+            else:
+                print("[TAS] - Not recording or appending.")
+                beep()
     except AttributeError:
         pass
 
@@ -186,7 +199,7 @@ def play_loop():
             target_x, target_y = event['x'], event['y']
             dx = target_x - last_x
             dy = target_y - last_y
-            distance = math.hypot(dx, dy)
+            distance = (dx*dx + dy*dy) ** 0.5
             if distance > 0:
                 steps = max(1, int(distance / 5))
                 positions = interpolate_movement(last_x, last_y, target_x, target_y, steps)
@@ -211,16 +224,22 @@ def play_loop():
         mode = "idle"
 
 def on_move(x, y):
-    if recording or append_mode:
+    if recording:
         events.append({'type':'move','x':x,'y':y,'time':time.time()})
+    elif append_mode:
+        new_events.append({'type':'move','x':x,'y':y,'time':time.time()})
 
 def on_click(x, y, button, pressed):
-    if recording or append_mode:
+    if recording:
         events.append({'type':'click','x':x,'y':y,'button':button.name,'pressed':pressed,'time':time.time()})
+    elif append_mode:
+        new_events.append({'type':'click','x':x,'y':y,'button':button.name,'pressed':pressed,'time':time.time()})
 
 def on_scroll(x, y, dx, dy):
-    if recording or append_mode:
+    if recording:
         events.append({'type':'scroll','x':x,'y':y,'dx':dx,'dy':dy,'time':time.time()})
+    elif append_mode:
+        new_events.append({'type':'scroll','x':x,'y':y,'dx':dx,'dy':dy,'time':time.time()})
 
 print("[TAS] - Mouse TAS Recorder/Player")
 print("[TAS] - R: record start/stop, S: play/stop, P: pause/resume")

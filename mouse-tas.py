@@ -4,13 +4,13 @@ import json
 import time
 import threading
 import sys
+import math
 
 SPEED = 10.0
 
 events = []
 recording = False
 start_time = 0
-append_mode = False
 
 mode = "idle"
 play_thread = None
@@ -19,18 +19,39 @@ play_start_time = 0
 play_index = 0
 pause_flag = False
 
+append_mode = False
+append_events = []
+append_start_time = 0
+
 mouse_controller = Controller()
 
-def on_press(key):
-    global recording, events, start_time, mode, play_thread, play_events, play_start_time, play_index, pause_flag, append_mode
+def beep():
     try:
-        if key == keyboard.KeyCode.from_char('r'):
+        import winsound
+        winsound.Beep(1000, 300)
+    except:
+        sys.stdout.write('\a')
+        sys.stdout.flush()
+
+def on_press(key):
+    global recording, events, start_time, mode, play_thread, play_events, play_start_time, play_index, pause_flag
+    global append_mode, append_events, append_start_time
+    try:
+        if key == keyboard.KeyCode.from_char('q'):
+            print("[TAS] - Shutting down...")
+            beep()
+            beep()
+            if play_thread and play_thread.is_alive():
+                play_thread.join(0.1)
+            sys.exit(0)
+
+        elif key == keyboard.KeyCode.from_char('r'):
             if mode == "idle" or mode == "recording":
                 if not recording:
                     print("[TAS] - Recording started...")
+                    beep()
                     mode = "recording"
                     recording = True
-                    append_mode = False
                     events = []
                     start_time = time.time()
                 else:
@@ -41,31 +62,9 @@ def on_press(key):
                     with open('mouse_tas.json', 'w') as f:
                         json.dump(events, f, indent=2)
                     print(f"[TAS] - Recording stopped. Saved {len(events)} events to mouse_tas.json")
-        elif key == keyboard.KeyCode.from_char('a'):
-            if mode == "idle" or mode == "recording":
-                if not recording:
-                    print("[TAS] - Append recording started...")
-                    mode = "recording"
-                    recording = True
-                    append_mode = True
-                    events = []
-                    start_time = time.time()
-                else:
-                    recording = False
-                    mode = "idle"
-                    for e in events:
-                        e['time'] -= start_time
-                    try:
-                        with open('mouse_tas.json', 'r') as f:
-                            existing = json.load(f)
-                        if not isinstance(existing, list):
-                            existing = []
-                    except (FileNotFoundError, json.JSONDecodeError):
-                        existing = []
-                    combined = existing + events
-                    with open('mouse_tas.json', 'w') as f:
-                        json.dump(combined, f, indent=2)
-                    print(f"[TAS] - Append recording stopped. Added {len(events)} events to mouse_tas.json (total {len(combined)})")
+                    beep()
+                    beep()
+
         elif key == keyboard.KeyCode.from_char('s'):
             if mode == "idle" or mode == "playing" or mode == "paused":
                 if mode == "playing" or mode == "paused":
@@ -74,13 +73,17 @@ def on_press(key):
                     if play_thread and play_thread.is_alive():
                         play_thread.join(0.1)
                     print("[TAS] - Playback stopped.")
+                    beep()
+                    beep()
                 try:
                     with open('mouse_tas.json', 'r') as f:
                         play_events = json.load(f)
                     if not play_events:
                         print("[TAS] - No events to play.")
+                        beep()
                         return
                     print(f"[TAS] - Playing started (speed {SPEED}x)...")
+                    beep()
                     mode = "playing"
                     pause_flag = False
                     play_index = 0
@@ -90,57 +93,85 @@ def on_press(key):
                         play_thread.start()
                 except FileNotFoundError:
                     print("[TAS] - No recorded file found.")
+                    beep()
+
         elif key == keyboard.KeyCode.from_char('p'):
             if mode == "playing":
                 pause_flag = not pause_flag
                 if pause_flag:
                     print("[TAS] - Paused.")
+                    beep()
                 else:
                     print("[TAS] - Resumed.")
+                    beep()
+                    beep()
             elif mode == "paused":
                 pause_flag = False
                 mode = "playing"
                 print("[TAS] - Resumed.")
-        elif key == keyboard.KeyCode.from_char('q'):
-            print("[TAS] - Shutting down...")
-            if mode == "playing" or mode == "paused":
-                mode = "idle"
-                pause_flag = False
-                if play_thread and play_thread.is_alive():
-                    play_thread.join(0.1)
-            if mode == "recording":
-                recording = False
-                mode = "idle"
-                for e in events:
-                    e['time'] -= start_time
-                if append_mode:
+                beep()
+                beep()
+
+        elif key == keyboard.KeyCode.from_char('a'):
+            if mode == "idle" or mode == "append":
+                if not append_mode:
                     try:
                         with open('mouse_tas.json', 'r') as f:
                             existing = json.load(f)
-                        if not isinstance(existing, list):
-                            existing = []
-                    except (FileNotFoundError, json.JSONDecodeError):
+                    except FileNotFoundError:
                         existing = []
-                    combined = existing + events
-                    with open('mouse_tas.json', 'w') as f:
-                        json.dump(combined, f, indent=2)
-                    print(f"[TAS] - Append recording saved on shutdown. Added {len(events)} events")
+                    append_events = existing
+                    append_start_time = time.time()
+                    append_mode = True
+                    mode = "append"
+                    print(f"[TAS] - Append mode started. Existing events: {len(append_events)}")
+                    beep()
                 else:
+                    append_mode = False
+                    mode = "idle"
+                    for e in events:
+                        e['time'] = e['time'] - append_start_time + 0.1
+                    append_events.extend(events)
                     with open('mouse_tas.json', 'w') as f:
-                        json.dump(events, f, indent=2)
-                    print(f"[TAS] - Recording saved on shutdown. Saved {len(events)} events")
-            sys.exit(0)
+                        json.dump(append_events, f, indent=2)
+                    print(f"[TAS] - Append finished. Total events: {len(append_events)}")
+                    beep()
+                    beep()
+
+        elif key == keyboard.KeyCode.from_char('z'):
+            if recording or append_mode:
+                if events:
+                    removed = events.pop()
+                    print(f"[TAS] - Removed last event: {removed['type']}")
+                    beep()
+                else:
+                    print("[TAS] - No events to remove.")
+                    beep()
     except AttributeError:
         pass
 
+def interpolate_movement(from_x, from_y, to_x, to_y, steps):
+    if steps < 1:
+        return [(to_x, to_y)]
+    positions = []
+    for i in range(1, steps + 1):
+        t = i / steps
+        x = int(from_x + (to_x - from_x) * t)
+        y = int(from_y + (to_y - from_y) * t)
+        positions.append((x, y))
+    return positions
+
 def play_loop():
     global mode, play_index, play_start_time, pause_flag
+    last_x, last_y = mouse_controller.position
     while mode == "playing" or mode == "paused":
         if mode == "paused":
             time.sleep(0.01)
             continue
         if play_index >= len(play_events):
             print("[TAS] - Playback finished.")
+            beep()
+            beep()
             mode = "idle"
             break
         event = play_events[play_index]
@@ -150,8 +181,21 @@ def play_loop():
             time.sleep(wait)
         if mode == "paused":
             continue
+
         if event['type'] == 'move':
-            mouse_controller.position = (event['x'], event['y'])
+            target_x, target_y = event['x'], event['y']
+            dx = target_x - last_x
+            dy = target_y - last_y
+            distance = math.hypot(dx, dy)
+            if distance > 0:
+                steps = max(1, int(distance / 5))
+                positions = interpolate_movement(last_x, last_y, target_x, target_y, steps)
+                for pos in positions:
+                    mouse_controller.position = pos
+                    time.sleep(0.001)
+                last_x, last_y = target_x, target_y
+            else:
+                mouse_controller.position = (target_x, target_y)
         elif event['type'] == 'click':
             button = getattr(Button, event['button'])
             if event['pressed']:
@@ -160,24 +204,27 @@ def play_loop():
                 mouse_controller.release(button)
         elif event['type'] == 'scroll':
             mouse_controller.scroll(event['dx'], event['dy'])
+
         play_index += 1
+
     if mode == "playing" or mode == "paused":
         mode = "idle"
 
 def on_move(x, y):
-    if recording:
+    if recording or append_mode:
         events.append({'type':'move','x':x,'y':y,'time':time.time()})
 
 def on_click(x, y, button, pressed):
-    if recording:
+    if recording or append_mode:
         events.append({'type':'click','x':x,'y':y,'button':button.name,'pressed':pressed,'time':time.time()})
 
 def on_scroll(x, y, dx, dy):
-    if recording:
+    if recording or append_mode:
         events.append({'type':'scroll','x':x,'y':y,'dx':dx,'dy':dy,'time':time.time()})
 
 print("[TAS] - Mouse TAS Recorder/Player")
-print("[TAS] - R: record start/stop (overwrite), A: append record start/stop, S: play/stop, P: pause/resume, Q: shutdown")
+print("[TAS] - R: record start/stop, S: play/stop, P: pause/resume")
+print("[TAS] - A: append mode start/stop, Z: undo last event, Q: shutdown")
 print(f"[TAS] - Playback speed: {SPEED}x")
 
 keyboard_listener = keyboard.Listener(on_press=on_press)

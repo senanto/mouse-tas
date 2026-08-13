@@ -5,7 +5,7 @@ import time
 import threading
 import sys
 
-SPEED = 10.0
+SPEED = 200.0
 
 events = []
 recording = False
@@ -23,8 +23,8 @@ base_events = []
 new_events = []
 append_start_time = 0
 base_last_time = 0
-backup_base = [] 
-append_history = []  
+backup_base = []
+append_history = []
 
 mouse_controller = Controller()
 
@@ -128,7 +128,7 @@ def on_press(key):
                     new_events = []
                     append_start_time = time.time()
                     base_last_time = base_events[-1]['time'] if base_events else 0
-                    backup_base = base_events.copy() 
+                    backup_base = base_events.copy()
                     append_mode = True
                     mode = "append"
                     print(f"[TAS] - Append mode started. Existing events: {len(base_events)}")
@@ -157,7 +157,7 @@ def on_press(key):
             if recording:
                 if events:
                     removed = events.pop()
-                    print(f"[TAS] - Removed last event: {removed['type']} at ({removed.get('x', '?')}, {removed.get('y', '?')})")
+                    print(f"[TAS] - Removed last event: {removed['type']}")
                     beep()
                 else:
                     print("[TAS] - No events to remove.")
@@ -165,7 +165,7 @@ def on_press(key):
             elif append_mode:
                 if new_events:
                     removed = new_events.pop()
-                    print(f"[TAS] - Removed last appended event: {removed['type']} at ({removed.get('x', '?')}, {removed.get('y', '?')})")
+                    print(f"[TAS] - Removed last appended event: {removed['type']}")
                     beep()
                 else:
                     print("[TAS] - No appended events to remove.")
@@ -185,27 +185,24 @@ def on_press(key):
     except AttributeError:
         pass
 
-def interpolate_movement(from_x, from_y, to_x, to_y, steps):
-    if steps < 1:
-        return [(to_x, to_y)]
-    positions = []
-    for i in range(1, steps + 1):
-        t = i / steps
-        x = int(from_x + (to_x - from_x) * t)
-        y = int(from_y + (to_y - from_y) * t)
-        positions.append((x, y))
-    return positions
-
 def play_loop():
     global mode, play_index, play_start_time, pause_flag
-    if play_events:
-        first_event = play_events[0]
-        if first_event['type'] == 'move' or first_event['type'] == 'click':
-            mouse_controller.position = (first_event['x'], first_event['y'])
+    if not play_events:
+        return
+
+    first_event = play_events[0]
+    if first_event['type'] in ('move', 'click'):
+        mouse_controller.position = (first_event['x'], first_event['y'])
     last_x, last_y = mouse_controller.position
+
+    speed_factor = SPEED / 10.0
+    step_size = max(5, int(8 * speed_factor))
+    step_delay = 0.001 / speed_factor
+    click_delay = 0.002 / speed_factor
+
     while mode == "playing" or mode == "paused":
         if mode == "paused":
-            time.sleep(0.01)
+            time.sleep(0.005)
             continue
         if play_index >= len(play_events):
             print("[TAS] - Playback finished.")
@@ -213,6 +210,7 @@ def play_loop():
             beep()
             mode = "idle"
             break
+
         event = play_events[play_index]
         elapsed = time.time() - play_start_time
         wait = (event['time'] / SPEED) - elapsed
@@ -227,23 +225,28 @@ def play_loop():
             dy = target_y - last_y
             distance = (dx*dx + dy*dy) ** 0.5
             if distance > 0:
-                steps = max(1, int(distance / 5))
-                positions = interpolate_movement(last_x, last_y, target_x, target_y, steps)
-                for pos in positions:
-                    mouse_controller.position = pos
-                    time.sleep(0.001)
+                steps = max(1, int(distance / step_size))
+                for i in range(1, steps + 1):
+                    t = i / steps
+                    x = int(last_x + dx * t)
+                    y = int(last_y + dy * t)
+                    mouse_controller.position = (x, y)
+                    time.sleep(step_delay)
                 last_x, last_y = target_x, target_y
             else:
                 mouse_controller.position = (target_x, target_y)
+
         elif event['type'] == 'click':
             if (last_x, last_y) != (event['x'], event['y']):
                 mouse_controller.position = (event['x'], event['y'])
                 last_x, last_y = event['x'], event['y']
+                time.sleep(click_delay)
             button = getattr(Button, event['button'])
             if event['pressed']:
                 mouse_controller.press(button)
             else:
                 mouse_controller.release(button)
+
         elif event['type'] == 'scroll':
             mouse_controller.scroll(event['dx'], event['dy'])
 

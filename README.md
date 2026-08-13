@@ -16,4 +16,4 @@ pip install pynput & python mouse-tas.py
 
 ## Configuration
 
-Edit the SPEED variable inside the script to change playback speed (default: 10.0).
+Edit the SPEED variable inside the script to change playback speed
